@@ -19,11 +19,28 @@ except ImportError:
     print("Could not import RiskyObject. Make sure you are in the workspace root and risky_object repo is cloned.")
     sys.exit(1)
 
+import argparse
+
 # Configuration
 weights_path = 'best_auc.pth'
-video_path = 'input_video/case1.mp4'
+input_dir = 'input_video'
 output_dir = 'output_video'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Parse arguments
+parser = argparse.ArgumentParser(description='Process a video for risky object detection.')
+parser.add_argument('video_name', type=str, help='Name of the video file in input_video folder (e.g., test1.mp4)')
+args = parser.parse_args()
+
+target_video_name = args.video_name
+video_path = os.path.join(input_dir, target_video_name)
+
+if not os.path.exists(video_path):
+    print(f"Error: Video file not found at {video_path}")
+    print(f"Please make sure '{target_video_name}' is inside '{input_dir}' folder.")
+    sys.exit(1)
+    
+print(f"Processing video: {video_path}")
 
 # Model Parameters
 x_dim = 2048
@@ -169,6 +186,17 @@ def process_chunk(chunk_frames, chunk_idx, yolo_model, risky_model):
             
             if x2 <= x1 or y2 <= y1: continue
             
+            # 1. Bonnet/Hood filtering
+            # Removed as per user request to detect objects in the bottom area.
+            # bottom_threshold = h - (h / 10.0)
+            # if y2 > bottom_threshold: continue
+
+            # 2. Minimum size check (1/15 of frame dimensions)
+            min_w = w / 15.0
+            min_h = h / 15.0
+            
+            if (x2 - x1) < min_w or (y2 - y1) < min_h: continue
+            
             obj_crop = frame[int(y1):int(y2), int(x1):int(x2)]
             obj_pil = Image.fromarray(cv2.cvtColor(obj_crop, cv2.COLOR_BGR2RGB))
             obj_pil = obj_pil.resize((224, 224))
@@ -245,9 +273,8 @@ def process_chunk(chunk_frames, chunk_idx, yolo_model, risky_model):
                 x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
                 
                 # Color based on risk
-                color = (0, 255, 0)
-                if risk_score > 0.5: color = (0, 0, 255)
-                elif risk_score > 0.3: color = (0, 165, 255) # Orange
+                color = (0, 255, 0) # Green
+                if risk_score > 0.8: color = (0, 0, 255) # Red
                 
                 cv2.rectangle(frame_vis, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(frame_vis, f"{risk_score:.2f}", (x1, y1-10), 
@@ -314,9 +341,10 @@ def main():
         vis_frames = process_chunk(chunk, i, yolo, model)
         
         # Save video
-        out_path = os.path.join(output_dir, f'result_case1_part{i+1}.mp4')
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        out_path = os.path.join(output_dir, f'result_{base_name}_part{i+1}.webm')
         h, w, _ = vis_frames[0].shape
-        out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), 20, (w, h)) # 20fps output
+        out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'vp80'), 20, (w, h)) # 20fps output, VP8 WebM
         for f in vis_frames:
             out.write(f)
         out.release()

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.mp4
+*.avi
+*.webm
+input_video/
+output_video/
+output_llm/
+debug_frames/
+temp_chunk.mp4
+test_video.mp4
+yolov8n.pt
+wandb/
+.ipynb_checkpoints/
+result/
